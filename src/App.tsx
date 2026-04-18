@@ -89,7 +89,6 @@ import { AboutView } from './components/About';
 import { LazyImage } from './components/LazyImage';
 import { AIInterviewer } from './components/AIInterviewer';
 import { handleFirestoreError } from './utils/error';
-import staticFirebaseConfig from '../firebase-applet-config.json';
 
 // --- Types ---
 
@@ -417,7 +416,7 @@ export default function App() {
         setLastConnectionError("Your browser thinks Firestore is offline. This usually means a firewall or proxy is blocking WebSockets or API calls.");
       } else {
         setConnectionStatus('error');
-        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || staticFirebaseConfig.projectId}, DB: (default))`);
+        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || 'missing'}, DB: (default))`);
       }
     }
   };
@@ -932,7 +931,7 @@ function AuthView({ navigate }: { navigate: (v: View) => void }) {
                     </button>
                   </div>
                   <a 
-                    href={`https://console.firebase.google.com/project/${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || staticFirebaseConfig.projectId}/authentication/settings`}
+                    href={`https://console.firebase.google.com/project/${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || 'missing'}/authentication/settings`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-center bg-rose-600 text-white py-2 rounded-lg hover:bg-rose-700 transition-colors uppercase tracking-[0.2em] font-black text-[9px]"
