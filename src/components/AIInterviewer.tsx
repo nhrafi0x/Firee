@@ -57,7 +57,7 @@ export function AIInterviewer({ onClose }: { onClose: () => void }) {
   const startSession = async () => {
     try {
       setIsConnecting(true);
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const ai = new GoogleGenAI({ apiKey });
 
       // Initialize Audio Context

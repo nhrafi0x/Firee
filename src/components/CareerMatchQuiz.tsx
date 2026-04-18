@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { View, UserProfile } from '../types';
 
 const ai = new GoogleGenAI({ 
-  get apiKey() { return import.meta.env.VITE_GEMINI_API_KEY; } 
+  get apiKey() { return import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY; } 
 });
 
 interface QuizQuestion {

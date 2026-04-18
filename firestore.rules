@@ -27,6 +27,9 @@ service cloud.firestore {
              data.milestones is map &&
              (data.get('education', '') is string && data.get('education', '').size() <= 200) &&
              (data.get('country', '') is string && data.get('country', '').size() <= 100) &&
+             (data.get('cvLink', '') is string && data.get('cvLink', '').size() <= 1000) &&
+             (data.get('socialLinks', []) is list) &&
+             (data.get('documents', []) is list) &&
              (!('matchedJobId' in data) || data.matchedJobId == null || (data.matchedJobId is string && data.matchedJobId.size() <= 100)) &&
              (!('points' in data) || data.points is number) &&
              (!('role' in data) || data.role == 'user'); // Force 'user' role on creation/standard update
@@ -70,7 +73,7 @@ service cloud.firestore {
       allow update: if isOwner(userId) && 
                       isValidUser(incoming()) && (
         // Action: Profile Content
-        (incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'education', 'country', 'currentRole', 'interests', 'careerPlan', 'profileImage'])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'education', 'country', 'currentRole', 'interests', 'careerPlan', 'profileImage', 'cvLink', 'socialLinks', 'documents'])) ||
         // Action: Progress
         (incoming().diff(existing()).affectedKeys().hasOnly(['matchedJobId', 'milestones', 'points', 'badges', 'quizResults']))
       ) && incoming().role == existing().role; // Immutable role

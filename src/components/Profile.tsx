@@ -10,6 +10,7 @@ import Markdown from 'react-markdown';
 
 export function ProfileView({ navigate, user, profile, setProfile, handleLogout }: { navigate: (v: View) => void, user: any, profile: UserProfile | null, setProfile: any, handleLogout: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState('');
@@ -109,13 +110,20 @@ export function ProfileView({ navigate, user, profile, setProfile, handleLogout 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile) return;
+    setIsSaving(true);
     try {
-      const updatedProfile = { ...profile, ...formData };
-      setProfile(updatedProfile);
-      await setDoc(doc(db, 'users', user.uid), updatedProfile);
+      // updateDoc is surgical - only updates the fields provided.
+      // We only send formData to comply with Firestore Action-Based rules.
+      await updateDoc(doc(db, 'users', user.uid), {
+        ...formData
+      });
+      
+      setProfile({ ...profile, ...formData });
       setIsEditing(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`, user);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -126,7 +134,10 @@ export function ProfileView({ navigate, user, profile, setProfile, handleLogout 
     }
     setIsGeneratingPlan(true);
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined') {
+        throw new Error("Gemini API Key is missing. If you're using Netlify, add VITE_GEMINI_API_KEY to environment variables.");
+      }
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Generate a tailored career path and skill development plan for someone currently working as a "${profile.currentRole}" with interests in "${profile.interests}". The plan should be structured, actionable, and formatted in Markdown. Include short-term and long-term goals, recommended skills to learn, and potential job roles. Keep it concise but informative.`;
       
@@ -418,12 +429,20 @@ export function ProfileView({ navigate, user, profile, setProfile, handleLogout 
 
               <div className="md:col-span-2">
                 <motion.button 
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+                  whileHover={{ scale: isSaving ? 1 : 1.01 }}
+                  whileTap={{ scale: isSaving ? 1 : 0.99 }}
                   type="submit" 
-                  className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20"
+                  disabled={isSaving}
+                  className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Save Changes
+                  {isSaving ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+                      Saving Changes...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
                 </motion.button>
               </div>
             </form>

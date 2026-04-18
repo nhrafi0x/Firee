@@ -152,6 +152,8 @@ interface ChatMessage {
   parts: { text: string }[];
 }
 
+import { formatAiError } from './utils/ai';
+
 // --- Components ---
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
@@ -225,9 +227,9 @@ function ChatBot() {
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'undefined' || !apiKey.trim()) {
-        throw new Error("Gemini API Key is missing.");
+        throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your environment variables.");
       }
       const ai = new GoogleGenAI({ apiKey });
       
@@ -256,10 +258,10 @@ function ChatBot() {
         setTimeout(() => sendMessage(retryCount + 1), 1000);
         return;
       }
-      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+      const errorMessage = formatAiError(error);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        parts: [{ text: `**Error:** ${errorMessage}\n\nPlease try again in a moment.` }] 
+        parts: [{ text: `**Error:** ${errorMessage}\n\nPlease follow the instructions above if it's a key or quota issue.` }] 
       }]);
     } finally {
       setIsLoading(false);

@@ -5,6 +5,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { BLOG_POSTS } from '../data';
 import { LazyImage } from './LazyImage';
 
+import { formatAiError } from '../utils/ai';
+
 export function BlogView() {
   const [selectedPost, setSelectedPost] = useState<any | null>(null);
   const [dynamicPosts, setDynamicPosts] = useState<any[]>([]);
@@ -15,11 +17,11 @@ export function BlogView() {
     setIsLoading(true);
     setError(null);
     try {
-      // Standard Vite env variable access
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      // Standard Vite env variable access with process.env fallback for AI Studio
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       
-      if (!apiKey || apiKey === 'undefined') {
-        throw new Error("Gemini API Key is missing. Please check your environment variables.");
+      if (!apiKey || apiKey === 'undefined' || !apiKey.trim()) {
+        throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your environment variables.");
       }
       
       const ai = new GoogleGenAI({ apiKey });
@@ -74,8 +76,8 @@ export function BlogView() {
       }
     } catch (err) {
       console.error("Error fetching news:", err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to fetch latest news: ${errorMessage}. Showing archived articles.`);
+      const errorMessage = formatAiError(err);
+      setError(`Notice: ${errorMessage}. Showing archived articles for now.`);
       if (!isRefresh) setDynamicPosts(BLOG_POSTS);
     } finally {
       setIsLoading(false);

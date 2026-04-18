@@ -33,7 +33,7 @@ export function SkillQuizView({ navigate, user, profile, setProfile }: { navigat
   const generateAiRecommendation = async (finalScore: number, finalCategoryScores: Record<string, number>) => {
     setIsAiLoading(true);
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const ai = new GoogleGenAI({ apiKey });
       
       const skillBreakdown = Object.entries(finalCategoryScores)
