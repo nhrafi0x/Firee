@@ -398,8 +398,11 @@ export default function App() {
     try {
       setConnectionStatus('connecting');
       // Briefly disable demo mode to test real connection
-      const wasDemo = getIsDemoMode();
       setDemoMode(false);
+      
+      if (getIsDemoMode()) {
+        throw new Error("Live Mode could not be enabled. Please ensure VITE_FIREBASE_* environment variables are set in your deployment settings.");
+      }
       
       console.log("🛠️ Testing Firestore connection...");
       const snap = await getDocFromServer(doc(db, 'test', 'connection'));
@@ -414,7 +417,7 @@ export default function App() {
         setLastConnectionError("Your browser thinks Firestore is offline. This usually means a firewall or proxy is blocking WebSockets or API calls.");
       } else {
         setConnectionStatus('error');
-        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${staticFirebaseConfig.projectId}, DB: ${staticFirebaseConfig.firestoreDatabaseId})`);
+        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || staticFirebaseConfig.projectId}, DB: (default))`);
       }
     }
   };
@@ -929,7 +932,7 @@ function AuthView({ navigate }: { navigate: (v: View) => void }) {
                     </button>
                   </div>
                   <a 
-                    href={`https://console.firebase.google.com/project/${staticFirebaseConfig.projectId}/authentication/settings`}
+                    href={`https://console.firebase.google.com/project/${(import.meta as any).env.VITE_FIREBASE_PROJECT_ID || staticFirebaseConfig.projectId}/authentication/settings`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-center bg-rose-600 text-white py-2 rounded-lg hover:bg-rose-700 transition-colors uppercase tracking-[0.2em] font-black text-[9px]"

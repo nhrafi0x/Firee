@@ -1,10 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import * as authSDK from "firebase/auth";
 import * as firestoreSDK from "firebase/firestore";
-import staticFirebaseConfig from "../firebase-applet-config.json";
 import { mockAuth, mockDb } from "./lib/mockFirebase";
+import staticFirebaseConfig from "../firebase-applet-config.json";
 
-// Allow environment variable overrides (useful for Netlify deployment)
+// Environment variables take priority for Netlify; config file is a fallback for local dev/preview
 const firebaseConfig = {
     ...staticFirebaseConfig,
     apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || staticFirebaseConfig.apiKey,
@@ -18,7 +18,7 @@ const firebaseConfig = {
 // Check if we should use mock (if keys are placeholder or if we want to ensure offline stability)
 const useMock = !firebaseConfig.apiKey || 
                 firebaseConfig.apiKey.includes('YOUR_API_KEY') || 
-                (firebaseConfig.apiKey.startsWith('AIzaSyA4') && firebaseConfig.projectId.includes('remixed')) || 
+                firebaseConfig.apiKey === "" ||
                 !firebaseConfig.appId;
 
 let realApp: any;
@@ -60,6 +60,10 @@ export let auth: any = _isDemoMode ? mockAuth : realAuth;
 export let db: any = _isDemoMode ? mockDb : realDb;
 
 export const setDemoMode = (val: boolean) => {
+    if (!val && (!realAuth || !realDb)) {
+        console.warn("Cannot switch to Live Mode: Firebase not initialized (check env vars).");
+        return;
+    }
     _isDemoMode = val;
     auth = val ? mockAuth : realAuth;
     db = val ? mockDb : realDb;
