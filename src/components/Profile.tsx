@@ -126,7 +126,7 @@ export function ProfileView({ navigate, user, profile, setProfile, handleLogout 
     }
     setIsGeneratingPlan(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Generate a tailored career path and skill development plan for someone currently working as a "${profile.currentRole}" with interests in "${profile.interests}". The plan should be structured, actionable, and formatted in Markdown. Include short-term and long-term goals, recommended skills to learn, and potential job roles. Keep it concise but informative.`;
       

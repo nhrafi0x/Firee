@@ -9,7 +9,7 @@ let testEnv: RulesTestEnvironment;
  */
 async function runSecurityTests() {
   testEnv = await initializeTestEnvironment({
-    projectId: '',
+    projectId: 'fire-f23e9',
     firestore: {
       rules: `rules_version = '2';
 service cloud.firestore {

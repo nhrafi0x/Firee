@@ -4,7 +4,9 @@ import { Target, Sparkles, ChevronRight, RefreshCw, CheckCircle2, Loader2, Brain
 import { GoogleGenAI, Type } from "@google/genai";
 import { View, UserProfile } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ 
+  get apiKey() { return import.meta.env.VITE_GEMINI_API_KEY; } 
+});
 
 interface QuizQuestion {
   question: string;

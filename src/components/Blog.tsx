@@ -15,8 +15,8 @@ export function BlogView() {
     setIsLoading(true);
     setError(null);
     try {
-      // Use process.env.GEMINI_API_KEY as per skill guidelines for React/Vite
-      const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+      // Standard Vite env variable access
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       
       if (!apiKey || apiKey === 'undefined') {
         throw new Error("Gemini API Key is missing. Please check your environment variables.");
