@@ -1,0 +1,113 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    // Auth token email verification check
+    function isVerified() { return request.auth.token.email_verified == true; }
+    
+    // --- Validation Blueprints ---
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['fullName', 'username', 'milestones']) &&
+             data.fullName is string && data.fullName.size() <= 100 &&
+             data.username is string && data.username.size() <= 50 &&
+             data.milestones is map &&
+             (data.get('education', '') is string && data.get('education', '').size() <= 200) &&
+             (data.get('country', '') is string && data.get('country', '').size() <= 100) &&
+             (!('matchedJobId' in data) || data.matchedJobId == null || (data.matchedJobId is string && data.matchedJobId.size() <= 100)) &&
+             (!('points' in data) || data.points is number) &&
+             (!('role' in data) || data.role == 'user'); // Force 'user' role on creation/standard update
+    }
+
+    function isValidTodo(data) {
+      return data.keys().hasAll(['text', 'priority', 'completed', 'createdAt']) &&
+             data.text is string && data.text.size() <= 500 &&
+             data.priority in ['High', 'Medium', 'Low'] &&
+             data.completed is bool &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidApplication(data) {
+      return data.keys().hasAll(['company', 'role', 'status']) &&
+             data.company is string && data.company.size() <= 100 &&
+             data.role is string && data.role.size() <= 100 &&
+             data.status in ['Applied', 'Interview', 'Offer', 'Rejected'] &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+             (!('link' in data) || (data.link is string && data.link.size() <= 500));
+    }
+
+    // --- Collection Routes ---
+
+    // Connection Test
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Users
+    match /users/{userId} {
+      // PII Isolation: Only owner can read their own profile
+      allow get: if isOwner(userId);
+      
+      // Create: Strictly validate keys and values
+      allow create: if isOwner(userId) && 
+                      isValidUser(incoming()) && 
+                      incoming().keys().size() <= 15 && // Prevent ghost fields
+                      incoming().role == 'user';
+      
+      allow update: if isOwner(userId) && 
+                      isValidUser(incoming()) && (
+        // Action: Profile Content
+        (incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'education', 'country', 'currentRole', 'interests', 'careerPlan', 'profileImage'])) ||
+        // Action: Progress
+        (incoming().diff(existing()).affectedKeys().hasOnly(['matchedJobId', 'milestones', 'points', 'badges', 'quizResults']))
+      ) && incoming().role == existing().role; // Immutable role
+    }
+
+    // Subcollections: Todos
+    match /users/{userId}/todos/{todoId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && 
+                      isValidTodo(incoming()) && 
+                      isValidId(todoId) &&
+                      incoming().createdAt == request.time; // Mandatory server timestamp
+                      
+      allow update: if isOwner(userId) && 
+                      isValidTodo(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['text', 'priority', 'completed'])
+      );
+      
+      allow delete: if isOwner(userId);
+    }
+
+    // Subcollections: Applications
+    match /users/{userId}/applications/{appId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && 
+                      isValidApplication(incoming()) && 
+                      isValidId(appId);
+                      
+      allow update: if isOwner(userId) && 
+                      isValidApplication(incoming()) && (
+        // Identity Integrity: Application status transitions
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'date', 'link'])
+      );
+      
+      allow delete: if isOwner(userId);
+    }
+  }
+}
