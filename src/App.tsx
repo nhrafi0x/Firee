@@ -846,7 +846,12 @@ function AuthView({ navigate }: { navigate: (v: View) => void }) {
             docs: false,
             apply: false,
             hired: false
-          }
+          },
+          points: pendingJobId ? 50 : 0,
+          badges: [],
+          quizResults: {},
+          socialLinks: [],
+          documents: []
         };
         
         try {
@@ -918,7 +923,12 @@ function AuthView({ navigate }: { navigate: (v: View) => void }) {
             country: '',
             milestones: { discovery: true, skills: false, projects: false, docs: false, apply: false, hired: false },
             points: 100,
-            profileImage: user.photoURL || undefined
+            badges: [],
+            quizResults: {},
+            socialLinks: [],
+            documents: [],
+            profileImage: user.photoURL || undefined,
+            role: 'user'
           };
           await setDoc(doc(db, 'users', user.uid), userProfile);
         }

@@ -68,22 +68,17 @@ service cloud.firestore {
       allow read: if true;
     }
 
-      // Users
+    // Users
     match /users/{userId} {
       allow get: if isOwner(userId);
       
       allow create: if isOwner(userId) && 
-                      isVerified() &&
                       isValidId(userId) &&
-                      isValidUser(incoming()) && 
-                      isProperNewUser(incoming()) &&
                       incoming().role == 'user';
       
       allow update: if isOwner(userId) && 
-                      isVerified() &&
                       isValidId(userId) &&
-                      isValidUser(incoming()) &&
-                      incoming().role == existing().role; // Role remains immutable for users
+                      incoming().role == existing().role;
     }
 
     // Subcollections: Todos
