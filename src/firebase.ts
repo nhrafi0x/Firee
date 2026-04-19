@@ -15,16 +15,18 @@ const firebaseConfig = {
     firestoreDatabaseId: (firebaseAppletConfig as any)?.firestoreDatabaseId || "(default)"
 };
 
-// Check if we should use mock
+// Check if we should use mock (if keys are placeholder or if we want to ensure offline stability)
 const isConfigValid = firebaseConfig.apiKey && 
+                     !firebaseConfig.apiKey.includes('YOUR_API_KEY') && 
                      firebaseConfig.apiKey !== "" &&
-                     !firebaseConfig.apiKey.includes('your_api_key') &&
                      firebaseConfig.appId;
+
+const useMock = !isConfigValid;
 
 let realApp: any;
 let realAuth: any;
 let realDb: any;
-let _isDemoMode = !isConfigValid;
+let _isDemoMode = useMock;
 
 if (isConfigValid) { 
     try {
@@ -35,8 +37,6 @@ if (isConfigValid) {
         const dbId = firebaseConfig.firestoreDatabaseId;
         const settings: any = {
             experimentalForceLongPolling: true,
-            experimentalAutoDetectLongPolling: true,
-            useFetchStreams: false // Sometimes helps with stability in certain proxies
         };
 
         // Singleton check to avoid re-initialization errors during HMR
@@ -81,17 +81,22 @@ if (_isDemoMode) {
 }
 
 export const setDemoMode = (val: boolean) => {
+    if (!val && (!realAuth || !realDb)) {
+        console.warn("Cannot switch to Live Mode: Firebase not initialized (check env vars).");
+        return;
+    }
     _isDemoMode = val;
     auth = val ? mockAuth : realAuth;
     db = val ? mockDb : realDb;
-    console.warn(val ? "🔄 MANUAL OVERRIDE: Switched to Demo Mode (Offline)" : "⚡ MANUAL OVERRIDE: Switched to Live Mode (Cloud Firestore)");
+    console.info(val ? "🔄 Switched to Demo Mode (Offline)" : "⚡ Switched to Live Mode (Cloud Firestore)");
 };
 
 export const getIsDemoMode = () => _isDemoMode;
 export const hasRealFirebase = () => !!realAuth && !!realDb;
 
-if (!isConfigValid) {
-    console.info("ℹ️ Firebase is in Demo Mode (Mock API) because VITE_FIREBASE_API_KEY is missing or invalid.");
+if (useMock || !realDb) {
+    if (!useMock) console.warn("Firebase config present but initialization failed. Falling back to Demo Mode.");
+    else console.info("Firebase is in Demo Mode (Mock API). Provide valid config to enable Cloud Firestore.");
     auth = mockAuth;
     db = mockDb;
     _isDemoMode = true;
