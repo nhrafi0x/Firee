@@ -402,32 +402,50 @@ export default function App() {
   const [lastConnectionError, setLastConnectionError] = useState<string | null>(null);
 
   // Connection Test logic inside component
-  const checkConnection = async () => {
+  const checkConnection = async (retryArg: any = 0) => {
+    const retryCount = typeof retryArg === 'number' ? retryArg : 0;
     try {
       setConnectionStatus('connecting');
-      // Briefly disable demo mode to test real connection
-      setDemoMode(false);
+      setLastConnectionError(null);
       
-      if (getIsDemoMode()) {
-        const hasReal = hasRealFirebase();
-        throw new Error(`Live Mode could not be enabled. ${hasReal ? "The app is in Demo Mode by default." : "Firebase initialization failed - check your console for 'CRITICAL' errors and ensure your Firebase config in AI Studio is correct."}`);
+      const hasReal = hasRealFirebase();
+      if (!hasReal) {
+        throw new Error("Local Demo Mode Active: No online database configured.");
       }
       
-      console.log("🛠️ Testing Firestore connection...");
+      console.log(`🛠️ Diagnostic: Testing Firestore connection (Attempt ${retryCount + 1})...`);
+      
+      // We explicitly enable network in case it was toggled
       await enableNetwork(db);
-      const snap = await getDocFromServer(doc(db, 'test', 'connection'));
-      console.log("✅ Firestore connection test: SUCCESS", snap.exists());
+      
+      // Diagnostic document fetch
+      const testRef = doc(db, 'test', 'connection');
+      const connectionPromise = getDocFromServer(testRef);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 8000));
+      
+      await Promise.race([connectionPromise, timeoutPromise]);
+      
+      console.log("✅ Firestore connection: ONLINE");
       setConnectionStatus('connected');
       setLastConnectionError(null);
     } catch (error: any) {
-      console.error("❌ Firestore connection test: FAILED", error);
-      setDemoMode(true); // Re-enable if test fails
-      if(error?.message?.includes('the client is offline')) {
+      console.error("❌ Firestore connection diagnostic failed:", error);
+      
+      if ((error?.message?.includes('offline') || error?.message?.includes('timeout')) && retryCount < 1) {
+        console.log("🔄 Retrying connection check...");
+        await new Promise(r => setTimeout(r, 2000));
+        return checkConnection(retryCount + 1);
+      }
+
+      if(error?.message?.includes('offline')) {
         setConnectionStatus('offline');
-        setLastConnectionError("Your browser thinks Firestore is offline. This usually means a firewall or proxy is blocking WebSockets or API calls.");
+        setLastConnectionError("The browser cannot reach Google Cloud. Check your internet connection.");
+      } else if (error?.message?.includes('Demo Mode')) {
+        setConnectionStatus('offline');
+        setLastConnectionError("Running in local storage mode. Configure Firebase in the AI Studio menu to go online.");
       } else {
         setConnectionStatus('error');
-        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${import.meta.env.VITE_FIREBASE_PROJECT_ID || 'missing'}, DB: (default))`);
+        setLastConnectionError(`${error?.message || "Connectivity error"}. Verify your Firebase setup.`);
       }
     }
   };

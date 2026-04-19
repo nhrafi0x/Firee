@@ -2,31 +2,35 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import * as authSDK from "firebase/auth";
 import * as firestoreSDK from "firebase/firestore";
 import { mockAuth, mockDb } from "./lib/mockFirebase";
-import firebaseAppletConfig from "../firebase-applet-config.json";
 
-// use env vars if present, otherwise fallback to the JSON config
+// Configuration Resolution logic
+// We use import.meta.glob to optionally load the config file without breaking the build if it's missing (e.g. on Vercel)
+const configFiles = import.meta.glob('../firebase-applet-config.json', { eager: true });
+const firebaseAppletConfig: any = configFiles['../firebase-applet-config.json'] 
+    ? (configFiles['../firebase-applet-config.json'] as any).default 
+    : {};
+
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseAppletConfig as any)?.apiKey || "",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (firebaseAppletConfig as any)?.authDomain || "",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (firebaseAppletConfig as any)?.projectId || "",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (firebaseAppletConfig as any)?.storageBucket || "",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (firebaseAppletConfig as any)?.messagingSenderId || "",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || (firebaseAppletConfig as any)?.appId || "",
-    firestoreDatabaseId: (firebaseAppletConfig as any)?.firestoreDatabaseId || "(default)"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig?.apiKey || "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig?.authDomain || "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig?.projectId || "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig?.storageBucket || "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig?.messagingSenderId || "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig?.appId || "",
+    firestoreDatabaseId: firebaseAppletConfig?.firestoreDatabaseId || "(default)"
 };
 
-// Check if we should use mock (if keys are placeholder or if we want to ensure offline stability)
+// Check if we should use mock
+// Config is valid if we have at least apiKey and appId from env or elsewhere
 const isConfigValid = firebaseConfig.apiKey && 
-                     !firebaseConfig.apiKey.includes('YOUR_API_KEY') && 
                      firebaseConfig.apiKey !== "" &&
+                     !firebaseConfig.apiKey.includes('your_api_key') &&
                      firebaseConfig.appId;
-
-const useMock = !isConfigValid;
 
 let realApp: any;
 let realAuth: any;
 let realDb: any;
-let _isDemoMode = useMock;
+let _isDemoMode = !isConfigValid;
 
 if (isConfigValid) { 
     try {
@@ -37,6 +41,8 @@ if (isConfigValid) {
         const dbId = firebaseConfig.firestoreDatabaseId;
         const settings: any = {
             experimentalForceLongPolling: true,
+            experimentalAutoDetectLongPolling: true,
+            useFetchStreams: false // Sometimes helps with stability in certain proxies
         };
 
         // Singleton check to avoid re-initialization errors during HMR
@@ -81,22 +87,17 @@ if (_isDemoMode) {
 }
 
 export const setDemoMode = (val: boolean) => {
-    if (!val && (!realAuth || !realDb)) {
-        console.warn("Cannot switch to Live Mode: Firebase not initialized (check env vars).");
-        return;
-    }
     _isDemoMode = val;
     auth = val ? mockAuth : realAuth;
     db = val ? mockDb : realDb;
-    console.info(val ? "🔄 Switched to Demo Mode (Offline)" : "⚡ Switched to Live Mode (Cloud Firestore)");
+    console.warn(val ? "🔄 MANUAL OVERRIDE: Switched to Demo Mode (Offline)" : "⚡ MANUAL OVERRIDE: Switched to Live Mode (Cloud Firestore)");
 };
 
 export const getIsDemoMode = () => _isDemoMode;
 export const hasRealFirebase = () => !!realAuth && !!realDb;
 
-if (useMock || !realDb) {
-    if (!useMock) console.warn("Firebase config present but initialization failed. Falling back to Demo Mode.");
-    else console.info("Firebase is in Demo Mode (Mock API). Provide valid config to enable Cloud Firestore.");
+if (!isConfigValid) {
+    console.info("ℹ️ Firebase is in Demo Mode (Mock API) because VITE_FIREBASE_API_KEY is missing or invalid.");
     auth = mockAuth;
     db = mockDb;
     _isDemoMode = true;
