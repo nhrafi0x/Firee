@@ -71,7 +71,9 @@ import {
   auth, 
   db,
   getIsDemoMode,
-  setDemoMode
+  setDemoMode,
+  hasRealFirebase,
+  enableNetwork
 } from './firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { CAREER_DIRECTORY, QUIZ_QUESTIONS, BLOG_POSTS, JobProfile } from './data';
@@ -389,36 +391,61 @@ export default function App() {
   const [showAIInterviewer, setShowAIInterviewer] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    console.log("Profile state changed in App.tsx:", profile);
+  }, [profile]);
+
   const [loading, setLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [lastConnectionError, setLastConnectionError] = useState<string | null>(null);
 
   // Connection Test logic inside component
-  const checkConnection = async () => {
+  const checkConnection = async (retryArg: any = 0) => {
+    const retryCount = typeof retryArg === 'number' ? retryArg : 0;
     try {
       setConnectionStatus('connecting');
-      // Briefly disable demo mode to test real connection
-      setDemoMode(false);
+      setLastConnectionError(null);
       
-      if (getIsDemoMode()) {
-        throw new Error("Live Mode could not be enabled. Please ensure VITE_FIREBASE_* environment variables are set in your deployment settings.");
+      const hasReal = hasRealFirebase();
+      if (!hasReal) {
+        throw new Error("Local Demo Mode Active: No online database configured.");
       }
       
-      console.log("🛠️ Testing Firestore connection...");
-      const snap = await getDocFromServer(doc(db, 'test', 'connection'));
-      console.log("✅ Firestore connection test: SUCCESS", snap.exists());
+      console.log(`🛠️ Diagnostic: Testing Firestore connection (Attempt ${retryCount + 1})...`);
+      
+      // We explicitly enable network in case it was toggled
+      await enableNetwork(db);
+      
+      // Diagnostic document fetch
+      const testRef = doc(db, 'test', 'connection');
+      const connectionPromise = getDocFromServer(testRef);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timed out')), 8000));
+      
+      await Promise.race([connectionPromise, timeoutPromise]);
+      
+      console.log("✅ Firestore connection: ONLINE");
       setConnectionStatus('connected');
       setLastConnectionError(null);
     } catch (error: any) {
-      console.error("❌ Firestore connection test: FAILED", error);
-      setDemoMode(true); // Re-enable if test fails
-      if(error?.message?.includes('the client is offline')) {
+      console.error("❌ Firestore connection diagnostic failed:", error);
+      
+      if ((error?.message?.includes('offline') || error?.message?.includes('timeout')) && retryCount < 1) {
+        console.log("🔄 Retrying connection check...");
+        await new Promise(r => setTimeout(r, 2000));
+        return checkConnection(retryCount + 1);
+      }
+
+      if(error?.message?.includes('offline')) {
         setConnectionStatus('offline');
-        setLastConnectionError("Your browser thinks Firestore is offline. This usually means a firewall or proxy is blocking WebSockets or API calls.");
+        setLastConnectionError("The browser cannot reach Google Cloud. Check your internet connection.");
+      } else if (error?.message?.includes('Demo Mode')) {
+        setConnectionStatus('offline');
+        setLastConnectionError("Running in local storage mode. Configure Firebase in the AI Studio menu to go online.");
       } else {
         setConnectionStatus('error');
-        setLastConnectionError(`${error?.message || "Unknown connection error"} (Project: ${import.meta.env.VITE_FIREBASE_PROJECT_ID || 'missing'}, DB: (default))`);
+        setLastConnectionError(`${error?.message || "Connectivity error"}. Verify your Firebase setup.`);
       }
     }
   };
@@ -429,14 +456,23 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    let unsubscribeProfile: (() => void) | null = null;
+    
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       if (u) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', u.uid));
-          if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
-          } else {
+          const userRef = doc(db, 'users', u.uid);
+          
+          // Initial check/creation
+          const userDoc = await getDoc(userRef);
+          if (!userDoc.exists()) {
             const pendingJobId = localStorage.getItem('pendingJobId');
             const initialProfile: UserProfile = {
               fullName: u.displayName || 'User',
@@ -445,12 +481,26 @@ export default function App() {
               country: '',
               matchedJobId: pendingJobId || null,
               role: 'user',
-              milestones: { discovery: !!pendingJobId, skills: false, projects: false, docs: false, apply: false, hired: false }
+              milestones: { discovery: !!pendingJobId, skills: false, projects: false, docs: false, apply: false, hired: false },
+              points: pendingJobId ? 50 : 0,
+              badges: [],
+              quizResults: {},
+              socialLinks: [],
+              documents: []
             };
-            await setDoc(doc(db, 'users', u.uid), initialProfile);
-            setProfile(initialProfile);
+            await setDoc(userRef, initialProfile);
             if (pendingJobId) localStorage.removeItem('pendingJobId');
           }
+
+          // Real-time listener
+          unsubscribeProfile = onSnapshot(userRef, (snapshot) => {
+            if (snapshot.exists()) {
+              setProfile(snapshot.data() as UserProfile);
+            }
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, `users/${u.uid}`);
+          });
+
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${u.uid}`);
         }
@@ -459,7 +509,11 @@ export default function App() {
       }
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const navigate = (newView: View) => {

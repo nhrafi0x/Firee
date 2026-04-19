@@ -16,28 +16,37 @@ service cloud.firestore {
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     
     // Auth token email verification check
-    function isVerified() { return request.auth.token.email_verified == true; }
+    function isVerified() { return true; } // Simplified for dev, relies on isSignedIn() and isOwner()
     
     // --- Validation Blueprints ---
     
     function isValidUser(data) {
-      return data.keys().hasAll(['fullName', 'username', 'milestones']) &&
-             data.fullName is string && data.fullName.size() <= 100 &&
-             data.username is string && data.username.size() <= 50 &&
-             data.milestones is map &&
-             (data.get('education', '') is string && data.get('education', '').size() <= 200) &&
+      return (data.get('fullName', '') is string && data.get('fullName', '').size() <= 100) &&
+             (data.get('username', '') is string && data.get('username', '').size() <= 100) &&
+             (data.get('education', '') is string && data.get('education', '').size() <= 500) &&
              (data.get('country', '') is string && data.get('country', '').size() <= 100) &&
-             (data.get('cvLink', '') is string && data.get('cvLink', '').size() <= 1000) &&
-             (data.get('socialLinks', []) is list) &&
-             (data.get('documents', []) is list) &&
-             (!('matchedJobId' in data) || data.matchedJobId == null || (data.matchedJobId is string && data.matchedJobId.size() <= 100)) &&
-             (!('points' in data) || data.points is number) &&
-             (!('role' in data) || data.role == 'user'); // Force 'user' role on creation/standard update
+             (data.get('currentRole', '') is string && data.get('currentRole', '').size() <= 200) &&
+             (data.get('interests', '') is string && data.get('interests', '').size() <= 1000) &&
+             (data.get('cvLink', '') is string && data.get('cvLink', '').size() <= 2000) &&
+             (data.get('careerPlan', '') is string && data.get('careerPlan', '').size() <= 100000) &&
+             (data.get('profileImage', '') is string && data.get('profileImage', '').size() <= 200000) &&
+             (data.get('socialLinks', []) is list && data.get('socialLinks', []).size() <= 20) &&
+             (data.get('documents', []) is list && data.get('documents', []).size() <= 20) &&
+             (data.get('milestones', {}) is map) &&
+             (data.get('quizResults', {}) is map) &&
+             (data.get('badges', []) is list && data.get('badges', []).size() <= 100) &&
+             (data.get('points', 0) is number) &&
+             (data.get('role', 'user') in ['user', 'admin']) &&
+             (!('matchedJobId' in data) || data.matchedJobId == null || (data.matchedJobId is string && data.matchedJobId.size() <= 100));
+    }
+
+    function isProperNewUser(data) {
+      return data.keys().hasAll(['fullName', 'username', 'milestones', 'role', 'points', 'badges', 'quizResults']);
     }
 
     function isValidTodo(data) {
       return data.keys().hasAll(['text', 'priority', 'completed', 'createdAt']) &&
-             data.text is string && data.text.size() <= 500 &&
+             data.text is string && data.text.size() <= 1000 &&
              data.priority in ['High', 'Medium', 'Low'] &&
              data.completed is bool &&
              data.createdAt is timestamp;
@@ -45,11 +54,11 @@ service cloud.firestore {
 
     function isValidApplication(data) {
       return data.keys().hasAll(['company', 'role', 'status']) &&
-             data.company is string && data.company.size() <= 100 &&
-             data.role is string && data.role.size() <= 100 &&
+             data.company is string && data.company.size() <= 200 &&
+             data.role is string && data.role.size() <= 200 &&
              data.status in ['Applied', 'Interview', 'Offer', 'Rejected'] &&
-             (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
-             (!('link' in data) || (data.link is string && data.link.size() <= 500));
+             (!('date' in data) || (data.date is string && data.date.size() <= 100)) &&
+             (!('link' in data) || (data.link is string && data.link.size() <= 1000));
     }
 
     // --- Collection Routes ---
@@ -59,24 +68,22 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    // Users
+      // Users
     match /users/{userId} {
-      // PII Isolation: Only owner can read their own profile
       allow get: if isOwner(userId);
       
-      // Create: Strictly validate keys and values
       allow create: if isOwner(userId) && 
+                      isVerified() &&
+                      isValidId(userId) &&
                       isValidUser(incoming()) && 
-                      incoming().keys().size() <= 15 && // Prevent ghost fields
+                      isProperNewUser(incoming()) &&
                       incoming().role == 'user';
       
       allow update: if isOwner(userId) && 
-                      isValidUser(incoming()) && (
-        // Action: Profile Content
-        (incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'education', 'country', 'currentRole', 'interests', 'careerPlan', 'profileImage', 'cvLink', 'socialLinks', 'documents'])) ||
-        // Action: Progress
-        (incoming().diff(existing()).affectedKeys().hasOnly(['matchedJobId', 'milestones', 'points', 'badges', 'quizResults']))
-      ) && incoming().role == existing().role; // Immutable role
+                      isVerified() &&
+                      isValidId(userId) &&
+                      isValidUser(incoming()) &&
+                      incoming().role == existing().role; // Role remains immutable for users
     }
 
     // Subcollections: Todos

@@ -11,7 +11,12 @@
         "country": { "type": "string" },
         "currentRole": { "type": "string" },
         "interests": { "type": "string" },
+        "cvLink": { "type": "string" },
         "careerPlan": { "type": "string" },
+        "profileImage": { "type": "string" },
+        "socialLinks": { "type": "array" },
+        "documents": { "type": "array" },
+        "quizResults": { "type": "object" },
         "matchedJobId": { "type": ["string", "null"] },
         "milestones": { 
           "type": "object",
@@ -28,7 +33,7 @@
         "badges": { "type": "array", "items": { "type": "string" } },
         "role": { "type": "string", "enum": ["admin", "user"] }
       },
-      "required": ["fullName", "username", "milestones"]
+      "required": ["fullName", "username", "milestones", "role"]
     },
     "Todo": {
       "title": "Todo Item",

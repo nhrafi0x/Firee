@@ -135,10 +135,14 @@ export function SkillQuizView({ navigate, user, profile, setProfile }: { navigat
             ? quizQuestions[0].skill 
             : 'Custom Assessment');
           const normalizedScore = Math.round((newScore / quizQuestions.length) * 10);
+          const pointsReward = isAiMode ? 100 : 30; // More points for the long AI assessment
           const newQuizResults = { ...profile.quizResults, [skillKey]: normalizedScore };
-          const updatedProfile = { ...profile, quizResults: newQuizResults };
+          const updatedProfile = { ...profile, quizResults: newQuizResults, points: (profile.points || 0) + pointsReward };
           setProfile(updatedProfile);
-          await updateDoc(doc(db, 'users', user.uid), { [`quizResults.${skillKey}`]: normalizedScore });
+          await updateDoc(doc(db, 'users', user.uid), { 
+            [`quizResults.${skillKey}`]: normalizedScore,
+            points: (profile.points || 0) + pointsReward
+          });
         } catch (error) {
           handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`, user);
         }

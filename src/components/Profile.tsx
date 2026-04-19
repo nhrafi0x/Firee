@@ -109,18 +109,43 @@ export function ProfileView({ navigate, user, profile, setProfile, handleLogout 
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !profile) return;
+    if (!user || !profile) {
+      console.warn("Profile update failed: User or Profile is null", { user, profile });
+      return;
+    }
+    
     setIsSaving(true);
+    console.log("Starting profile update with data:", formData);
+    
     try {
-      // updateDoc is surgical - only updates the fields provided.
-      // We only send formData to comply with Firestore Action-Based rules.
-      await updateDoc(doc(db, 'users', user.uid), {
-        ...formData
-      });
+      const userRef = doc(db, 'users', user.uid);
       
-      setProfile({ ...profile, ...formData });
+      // Sanitizing data to ensure compliance with Firestore rules
+      const sanitizedData = {
+        fullName: String(formData.fullName || '').trim().slice(0, 100),
+        username: String(formData.username || '').trim().slice(0, 100),
+        education: String(formData.education || '').trim().slice(0, 500),
+        country: String(formData.country || '').trim().slice(0, 100),
+        currentRole: String(formData.currentRole || '').trim().slice(0, 200),
+        interests: String(formData.interests || '').trim().slice(0, 1000),
+        cvLink: String(formData.cvLink || '').trim().slice(0, 2000),
+        socialLinks: Array.isArray(formData.socialLinks) ? formData.socialLinks.slice(0, 20) : [],
+        documents: Array.isArray(formData.documents) ? formData.documents.slice(0, 20) : [],
+        profileImage: String(formData.profileImage || '').slice(0, 200000)
+      };
+
+      console.log("Saving sanitized profile online:", sanitizedData);
+      
+      await updateDoc(userRef, sanitizedData);
+      
+      console.log("Profile updated successfully in Firestore");
+      
+      const updatedProfile = { ...profile, ...sanitizedData };
+      setProfile(updatedProfile);
       setIsEditing(false);
+      alert("Profile saved online successfully!");
     } catch (error) {
+      console.error("Profile update failed catch:", error);
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`, user);
     } finally {
       setIsSaving(false);

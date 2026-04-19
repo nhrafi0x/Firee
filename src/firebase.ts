@@ -2,77 +2,96 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import * as authSDK from "firebase/auth";
 import * as firestoreSDK from "firebase/firestore";
 import { mockAuth, mockDb } from "./lib/mockFirebase";
+import firebaseAppletConfig from "../firebase-applet-config.json";
 
-// Environment variables are required for Live Mode; otherwise app stays in Demo Mode
+// use env vars if present, otherwise fallback to the JSON config
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (firebaseAppletConfig as any)?.apiKey || "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (firebaseAppletConfig as any)?.authDomain || "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (firebaseAppletConfig as any)?.projectId || "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (firebaseAppletConfig as any)?.storageBucket || "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (firebaseAppletConfig as any)?.messagingSenderId || "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || (firebaseAppletConfig as any)?.appId || "",
+    firestoreDatabaseId: (firebaseAppletConfig as any)?.firestoreDatabaseId || "(default)"
 };
 
-// Check if we should use mock (if keys are placeholder or if we want to ensure offline stability)
-const useMock = !firebaseConfig.apiKey || 
-                firebaseConfig.apiKey.includes('YOUR_API_KEY') || 
-                firebaseConfig.apiKey === "" ||
-                !firebaseConfig.appId;
+// Check if we should use mock
+const isConfigValid = firebaseConfig.apiKey && 
+                     firebaseConfig.apiKey !== "" &&
+                     !firebaseConfig.apiKey.includes('your_api_key') &&
+                     firebaseConfig.appId;
 
 let realApp: any;
 let realAuth: any;
 let realDb: any;
-let _isDemoMode = useMock;
+let _isDemoMode = !isConfigValid;
 
-if (!useMock) {
+if (isConfigValid) { 
     try {
         const apps = getApps();
-        if (apps.length === 0) {
-            realApp = initializeApp(firebaseConfig);
-            realAuth = authSDK.getAuth(realApp);
-            
-            const dbId = (firebaseConfig as any).firestoreDatabaseId;
-            const settings = {
-                experimentalForceLongPolling: true,
-            };
+        realApp = apps.length === 0 ? initializeApp(firebaseConfig) : getApp();
+        realAuth = authSDK.getAuth(realApp);
+        
+        const dbId = firebaseConfig.firestoreDatabaseId;
+        const settings: any = {
+            experimentalForceLongPolling: true,
+            experimentalAutoDetectLongPolling: true,
+            useFetchStreams: false // Sometimes helps with stability in certain proxies
+        };
 
-            if (dbId && dbId !== "(default)") {
-                realDb = firestoreSDK.initializeFirestore(realApp, settings, dbId);
-            } else {
-                realDb = firestoreSDK.initializeFirestore(realApp, settings);
+        // Singleton check to avoid re-initialization errors during HMR
+        const globalRef = (globalThis as any);
+        if (!globalRef.__FIREBASE_DB__) {
+            try {
+                if (dbId && dbId !== "(default)") {
+                    realDb = firestoreSDK.initializeFirestore(realApp, settings, dbId);
+                } else {
+                    realDb = firestoreSDK.initializeFirestore(realApp, settings);
+                }
+                globalRef.__FIREBASE_DB__ = realDb;
+                console.log(`✅ Cloud Firestore initialized (New Instance, DB: ${dbId})`);
+            } catch (initErr) {
+                console.warn("⚠️ initializeFirestore failed, attempting getFirestore:", initErr);
+                realDb = dbId && dbId !== "(default)" ? firestoreSDK.getFirestore(realApp, dbId) : firestoreSDK.getFirestore(realApp);
+                globalRef.__FIREBASE_DB__ = realDb;
             }
         } else {
-            realApp = getApp();
-            realAuth = authSDK.getAuth(realApp);
-            realDb = firestoreSDK.getFirestore(realApp);
+            realDb = globalRef.__FIREBASE_DB__;
+            console.log("✅ Cloud Firestore reused existing instance");
         }
     } catch (e) {
         console.error("🔥 Firebase initialization failed CRITICALLY:", e);
-        _isDemoMode = true;
     }
 }
 
-// Current active instances (exported as 'auth' and 'db' for simple usage, 
-// but wrappers will manage the switching logic internally)
-export let auth: any = _isDemoMode ? mockAuth : realAuth;
-export let db: any = _isDemoMode ? mockDb : realDb;
+// Current active instances
+export let auth: any;
+export let db: any;
+
+if (_isDemoMode) {
+    auth = mockAuth;
+    db = mockDb;
+} else if (realAuth && realDb) {
+    auth = realAuth;
+    db = realDb;
+} else {
+    auth = mockAuth;
+    db = mockDb;
+    _isDemoMode = true;
+}
 
 export const setDemoMode = (val: boolean) => {
-    if (!val && (!realAuth || !realDb)) {
-        console.warn("Cannot switch to Live Mode: Firebase not initialized (check env vars).");
-        return;
-    }
     _isDemoMode = val;
     auth = val ? mockAuth : realAuth;
     db = val ? mockDb : realDb;
-    console.info(val ? "🔄 Switched to Demo Mode (Offline)" : "⚡ Switched to Live Mode (Cloud Firestore)");
+    console.warn(val ? "🔄 MANUAL OVERRIDE: Switched to Demo Mode (Offline)" : "⚡ MANUAL OVERRIDE: Switched to Live Mode (Cloud Firestore)");
 };
 
 export const getIsDemoMode = () => _isDemoMode;
+export const hasRealFirebase = () => !!realAuth && !!realDb;
 
-if (useMock || !realDb) {
-    if (!useMock) console.warn("Firebase config present but initialization failed. Falling back to Demo Mode.");
-    else console.info("Firebase is in Demo Mode (Mock API). Provide valid config to enable Cloud Firestore.");
+if (!isConfigValid) {
+    console.info("ℹ️ Firebase is in Demo Mode (Mock API) because VITE_FIREBASE_API_KEY is missing or invalid.");
     auth = mockAuth;
     db = mockDb;
     _isDemoMode = true;
@@ -182,3 +201,13 @@ export const serverTimestamp = () => {
 };
 
 export const Timestamp = firestoreSDK.Timestamp;
+
+export const enableNetwork = (firestore: any) => {
+    if (_isDemoMode) return Promise.resolve();
+    return firestoreSDK.enableNetwork(firestore);
+};
+
+export const disableNetwork = (firestore: any) => {
+    if (_isDemoMode) return Promise.resolve();
+    return firestoreSDK.disableNetwork(firestore);
+};

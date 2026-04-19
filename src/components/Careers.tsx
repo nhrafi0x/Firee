@@ -28,14 +28,19 @@ export function CareersView({ navigate, user, profile, setProfile }: { navigate:
     
     if (profile && user) {
       try {
+        const isAlreadyMatched = profile.matchedJobId === selectedJob.id;
+        const rewardPoints = isAlreadyMatched ? 0 : 50;
+        
         const updatedProfile = { 
           ...profile, 
           matchedJobId: selectedJob.id,
+          points: (profile.points || 0) + rewardPoints,
           milestones: { ...profile.milestones, discovery: true }
         };
         setProfile(updatedProfile);
         await updateDoc(doc(db, 'users', user.uid), { 
           matchedJobId: selectedJob.id,
+          points: (profile.points || 0) + rewardPoints,
           'milestones.discovery': true
         });
         navigate('dashboard');

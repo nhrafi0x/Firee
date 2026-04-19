@@ -155,7 +155,16 @@ class MockFirestore {
     // Basic reactive loop using setInterval for mock
     const check = () => {
       const allKeys = Object.keys(this.data);
-      if (ref.path) { // collection
+      const isDocument = ref.path.split('/').length % 2 === 0;
+
+      if (isDocument) {
+        const value = this.data[ref.path];
+        callback({
+          exists: () => !!value,
+          data: () => value,
+          id: ref.id
+        });
+      } else {
         const docs = allKeys
           .filter(k => k.startsWith(ref.path + '/') && k.split('/').length === ref.path.split('/').length + 1)
           .map(k => ({
